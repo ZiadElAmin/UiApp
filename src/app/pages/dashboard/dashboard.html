@@ -7,33 +7,36 @@
 
   <!-- Row 1: High-Level Stats -->
   <div class="stats-row">
-    <mat-card class="stat-card balance">
+    <mat-card class="stat-card balance clickable" routerLink="/transactions">
       <mat-card-content>
         <mat-icon>account_balance_wallet</mat-icon>
         <div class="stat-info">
           <p>Current Balance</p>
           <h2 [ngStyle]="{'color': currentBalance >= 0 ? '' : '#f44336'}">{{ currentBalance | currency }}</h2>
         </div>
+        <mat-icon class="arrow-icon">chevron_right</mat-icon>
       </mat-card-content>
     </mat-card>
 
-    <mat-card class="stat-card income">
+    <mat-card class="stat-card income clickable" routerLink="/transactions">
       <mat-card-content>
         <mat-icon>trending_up</mat-icon>
         <div class="stat-info">
           <p>Total Income</p>
           <h2 class="text-green">{{ totalIncome | currency }}</h2>
         </div>
+        <mat-icon class="arrow-icon">chevron_right</mat-icon>
       </mat-card-content>
     </mat-card>
 
-    <mat-card class="stat-card expenses">
+    <mat-card class="stat-card expenses clickable" routerLink="/transactions">
       <mat-card-content>
         <mat-icon>trending_down</mat-icon>
         <div class="stat-info">
           <p>Total Expenses</p>
           <h2 class="text-red">{{ totalExpenses | currency }}</h2>
         </div>
+        <mat-icon class="arrow-icon">chevron_right</mat-icon>
       </mat-card-content>
     </mat-card>
   </div>
@@ -57,9 +60,10 @@
   <div class="dashboard-grid">
     
     <!-- Left Side: Recent Activity -->
-    <mat-card class="dash-section">
+    <mat-card class="dash-section clickable" routerLink="/transactions">
       <mat-card-header>
         <mat-card-title>Recent Activity</mat-card-title>
+        <span class="section-hint">View all →</span>
       </mat-card-header>
       <mat-card-content>
         <div class="tx-list">
@@ -78,9 +82,10 @@
     </mat-card>
 
     <!-- Right Side: Budget Health -->
-    <mat-card class="dash-section">
+    <mat-card class="dash-section clickable" routerLink="/budgets">
       <mat-card-header>
         <mat-card-title>Budget Health</mat-card-title>
+        <span class="section-hint">Manage →</span>
       </mat-card-header>
       <mat-card-content>
         <div class="budget-list">

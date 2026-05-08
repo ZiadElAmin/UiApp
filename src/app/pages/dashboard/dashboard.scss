@@ -122,6 +122,37 @@
 .text-green { color: #4caf50 !important; }
 .text-red { color: #f44336 !important; }
 
+/* Clickable card styles */
+.clickable {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12) !important;
+  }
+
+  &:active {
+    transform: translateY(-1px);
+  }
+}
+
+.arrow-icon {
+  margin-left: auto;
+  opacity: 0.3;
+  font-size: 20px !important;
+  height: 20px !important;
+  width: 20px !important;
+}
+
+.section-hint {
+  margin-left: auto;
+  font-size: 13px;
+  color: #2196f3;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
 /* Dark Theme Adjustments */
 body.dark-theme {
   .welcome-header p, .stat-card .stat-info p { color: #aaa; }

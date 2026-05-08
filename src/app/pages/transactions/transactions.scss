@@ -17,12 +17,15 @@
     flex: 1;
     min-width: 200px;
   }
+}
 
-  .submit-btn {
-    height: 56px;
-    margin-bottom: 22px; // Aligns with inputs (accounting for error padding)
-    min-width: 100px;
-  }
+.button-group {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 22px;
+
+  button { height: 56px; min-width: 100px; }
 }
 
 .table-header {
@@ -31,29 +34,78 @@
   align-items: center;
   padding: 16px 16px 0 16px;
 
-  .search-box {
-    width: 300px;
-  }
+  .search-box { width: 300px; }
 }
 
-table {
+/* Custom table using *ngFor */
+.tx-table {
   width: 100%;
+  padding: 0 16px 16px;
+}
+
+.tx-header-row {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr 1fr;
+  padding: 12px 8px;
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  color: #888;
+  border-bottom: 2px solid rgba(0,0,0,0.1);
+}
+
+.tx-row {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr 1fr;
+  padding: 12px 8px;
+  align-items: center;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+  transition: background 0.15s;
+
+  &:hover { background: rgba(0,0,0,0.02); }
+  &:last-child { border-bottom: none; }
+}
+
+.actions {
+  display: flex;
+  gap: 4px;
+}
+
+.empty-row {
+  text-align: center;
+  padding: 40px;
+  color: #888;
+  font-style: italic;
 }
 
 .badge {
-  padding: 4px 8px;
+  padding: 4px 10px;
   border-radius: 12px;
   font-size: 12px;
-  text-transform: capitalize;
   font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 
-  &.income {
-    background-color: #e8f5e9;
-    color: #2e7d32;
+  mat-icon {
+    font-size: 14px;
+    height: 14px;
+    width: 14px;
   }
-  
-  &.expense {
-    background-color: #ffebee;
-    color: #c62828;
+
+  &.income  { background-color: #e8f5e9; color: #2e7d32; }
+  &.expense { background-color: #ffebee; color: #c62828; }
+}
+
+/* Dark theme */
+body.dark-theme {
+  .tx-header-row { border-bottom-color: rgba(255,255,255,0.1); color: #aaa; }
+  .tx-row {
+    border-bottom-color: rgba(255,255,255,0.05);
+    &:hover { background: rgba(255,255,255,0.03); }
+  }
+  .badge {
+    &.income  { background-color: #1b3a1e; color: #81c784; }
+    &.expense { background-color: #3a1212; color: #e57373; }
   }
 }

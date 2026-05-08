@@ -1,11 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { MatTableDataSource } from '@angular/material/table';
 import { FinanceService } from '../../services/finance';
 import { Transaction, Budget } from '../../models/finance.model';
-import { Observable } from 'rxjs';
-
-
+import { Observable, Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-transactions',
@@ -13,23 +10,22 @@ import { Observable } from 'rxjs';
   styleUrls: ['./transactions.scss'],
   standalone: false
 })
-export class Transactions implements OnInit {
+export class Transactions implements OnInit, OnDestroy {
   transactionForm: FormGroup;
-  displayedColumns: string[] = ['title', 'amount', 'type', 'date', 'actions'];
-  dataSource = new MatTableDataSource<Transaction>();
-  
-  // Track if we are currently editing an item
+
+  // Plain arrays instead of MatTableDataSource
+  allTransactions: Transaction[] = [];
+  filteredTransactions: Transaction[] = [];
+  searchTerm: string = '';
+
   editingId: string | null = null;
-
-
   budgets$: Observable<Budget[]>;
 
+  private sub!: Subscription;
 
-  constructor(
-    private fb: FormBuilder,
-    private financeService: FinanceService
-  ) {
+  constructor(private fb: FormBuilder, private financeService: FinanceService, private cdr: ChangeDetectorRef) {
     this.budgets$ = this.financeService.budgets$;
+
     this.transactionForm = this.fb.group({
       title: ['', Validators.required],
       amount: [null, [Validators.required, Validators.min(0.01)]],
@@ -39,29 +35,46 @@ export class Transactions implements OnInit {
     });
   }
 
-  ngOnInit() {
-    this.financeService.transactions$.subscribe(data => {
-      this.dataSource.data = data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    });
+ ngOnInit() {
+  this.sub = this.financeService.transactions$.subscribe(data => {
+    this.allTransactions = [...data].sort((a, b) =>
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+    this.applyFilter();
+    this.cdr.detectChanges();  
+  });
+}
+
+  
+  applyFilter() {
+    const term = this.searchTerm.trim().toLowerCase();
+    if (!term) {
+      this.filteredTransactions = this.allTransactions;
+    } else {
+      this.filteredTransactions = this.allTransactions.filter(t =>
+        t.title.toLowerCase().includes(term) ||
+        t.type.toLowerCase().includes(term) ||
+        (t.category || '').toLowerCase().includes(term)
+      );
+    }
   }
 
-  applyFilter(event: Event) {
-    const filterValue = (event.target as HTMLInputElement).value;
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+  onSearchInput(event: Event) {
+    this.searchTerm = (event.target as HTMLInputElement).value;
+    this.applyFilter();
   }
 
-  // Populate the form with the selected transaction's data
   editTransaction(transaction: Transaction) {
     this.editingId = transaction.id!;
     this.transactionForm.patchValue({
       title: transaction.title,
       amount: transaction.amount,
       type: transaction.type,
+      category: transaction.category || '',
       date: transaction.date
     });
   }
 
-  // Cancel editing and reset the form
   cancelEdit() {
     this.editingId = null;
     this.transactionForm.reset({
@@ -70,36 +83,35 @@ export class Transactions implements OnInit {
     });
   }
 
-  async onSubmit() {
+  onSubmit() {
     if (this.transactionForm.invalid) return;
 
-    try {
-      if (this.editingId) {
-        // If we have an editingId, UPDATE the existing transaction
-        await this.financeService.updateTransaction(this.editingId, this.transactionForm.value);
-        this.editingId = null; // Reset edit mode
-      } else {
-        // Otherwise, ADD a new transaction
-        await this.financeService.addTransaction(this.transactionForm.value);
-      }
-      
-      // Reset the form back to default state
-      this.transactionForm.reset({
-        type: 'expense',
-        date: new Date().toISOString().split('T')[0]
-      });
-    } catch (error) {
-      console.error("Error saving transaction", error);
+    if (this.editingId) {
+      this.financeService.updateTransaction(this.editingId, this.transactionForm.value);
+      this.editingId = null;
+    } else {
+      this.financeService.addTransaction(this.transactionForm.value);
     }
+
+    this.transactionForm.reset({
+      type: 'expense',
+      date: new Date().toISOString().split('T')[0]
+    });
   }
 
   deleteTransaction(id: string) {
-    if(confirm('Are you sure you want to delete this?')) {
+    if (confirm('Are you sure you want to delete this?')) {
       this.financeService.deleteTransaction(id);
-      // If we delete the item we are currently editing, cancel the edit
-      if (this.editingId === id) {
-        this.cancelEdit();
-      }
+      if (this.editingId === id) this.cancelEdit();
     }
+  }
+
+  // trackBy for *ngFor — taught in Lab 4
+  trackById(index: number, item: any): string {
+    return item.id || index.toString();
+  }
+
+  ngOnDestroy() {
+    if (this.sub) this.sub.unsubscribe();
   }
 }

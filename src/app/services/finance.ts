@@ -1,183 +1,246 @@
-import { Injectable, EnvironmentInjector, runInInjectionContext } from '@angular/core';
-import { AngularFirestore } from '@angular/fire/compat/firestore';
-import { AuthService } from './auth';
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable } from 'rxjs';
-import { Goal, Transaction } from '../models/finance.model';
-import { Budget } from '../models/finance.model';
+import { map } from 'rxjs/operators';
+import { AuthService } from './auth';
+import { Transaction, Budget, Goal } from '../models/finance.model';
+import { environment } from '../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class FinanceService {
 
-  private goalsSubject = new BehaviorSubject<Goal[]>([]);
-goals$: Observable<Goal[]> = this.goalsSubject.asObservable();
+  private dbUrl = environment.firebase.databaseURL;
+
+  // BehaviorSubjects — lab taught pattern
   private transactionsSubject = new BehaviorSubject<Transaction[]>([]);
+  transactions$: Observable<Transaction[]> = this.transactionsSubject.asObservable();
 
   private budgetsSubject = new BehaviorSubject<Budget[]>([]);
-budgets$: Observable<Budget[]> = this.budgetsSubject.asObservable();
+  budgets$: Observable<Budget[]> = this.budgetsSubject.asObservable();
 
-  transactions$: Observable<Transaction[]> = this.transactionsSubject.asObservable();
-  private userId: string | null = null;
+  private goalsSubject = new BehaviorSubject<Goal[]>([]);
+  goals$: Observable<Goal[]> = this.goalsSubject.asObservable();
 
-  constructor(
-    private firestore: AngularFirestore,
-    private authService: AuthService,
-    private injector: EnvironmentInjector // <-- 1. We inject the safe context here
-  ) {
+  constructor(private http: HttpClient, private authService: AuthService) {
+    // When user logs in or out, reload or clear data
     this.authService.user$.subscribe(user => {
       if (user) {
-        this.userId = user.uid;
-        this.loadTransactions();
+        this.loadAll();
       } else {
-        this.userId = null;
-        this.transactionsSubject.next([]); 
+        this.transactionsSubject.next([]);
+        this.budgetsSubject.next([]);
+        this.goalsSubject.next([]);
       }
     });
   }
 
- loadTransactions() {
-    if (!this.userId) return;
-    
-    // Wrap ALL THREE database calls inside the single safe context!
-    runInInjectionContext(this.injector, () => {
-      
-      // 1. Load Transactions
-      this.firestore.collection<Transaction>('transactions', ref => 
-        ref.where('uid', '==', this.userId)
-      )
-      .valueChanges({ idField: 'id' })
-      .subscribe({
-        next: (data) => this.transactionsSubject.next(data),
-        error: (err) => console.error("Error loading transactions:", err)
-      });
+  // ─── HELPERS ────────────────────────────────────────────────
 
-      // 2. Load Budgets
-      this.firestore.collection<Budget>('budgets', ref => 
-        ref.where('uid', '==', this.userId)
-      )
-      .valueChanges({ idField: 'id' })
-      .subscribe({
-        next: (data) => this.budgetsSubject.next(data),
-        error: (err) => console.error("Error loading budgets:", err)
-      });
+  private getUid(): string {
+    return this.authService.getUid() || '';
+  }
 
-      // 3. Load Goals (This must be inside the block!)
-      this.firestore.collection<Goal>('goals', ref => 
-        ref.where('uid', '==', this.userId)
-      )
-      .valueChanges({ idField: 'id' })
-      .subscribe({
-        next: (data) => this.goalsSubject.next(data),
-        error: (err) => console.error("Error loading goals:", err)
-      });
+  // Convert Firebase's object-of-objects response into a typed array with ids
+  private toArray<T>(obj: any): T[] {
+    if (!obj) return [];
+    return Object.keys(obj).map(key => ({ id: key, ...obj[key] }));
+  }
 
+  // ─── LOAD ALL DATA ──────────────────────────────────────────
+
+  loadAll() {
+    this.loadTransactions();
+    this.loadBudgets();
+    this.loadGoals();
+  }
+
+  loadTransactions() {
+    const uid = this.getUid();
+    if (!uid) return;
+
+    this.http.get<any>(`${this.dbUrl}/transactions/${uid}.json`).subscribe({
+      next: (data) => {
+        const list: Transaction[] = this.toArray<Transaction>(data);
+        this.transactionsSubject.next(list);
+      },
+      error: (err) => console.error('Error loading transactions:', err)
     });
   }
 
- async addTransaction(transaction: Transaction) {
-    if (!this.userId) throw new Error('User not logged in');
-    const newTx = { ...transaction, uid: this.userId };
-    
-    return runInInjectionContext(this.injector, async () => {
-      // --- THE FIX: Grab both database references SYNCHRONOUSLY before any 'await' ---
-      const transactionsRef = this.firestore.collection('transactions');
-      const budgetsRef = this.firestore.collection('budgets');
+  loadBudgets() {
+    const uid = this.getUid();
+    if (!uid) return;
 
-      // 1. Save the transaction using the saved reference
-      const result = await transactionsRef.add(newTx);
+    this.http.get<any>(`${this.dbUrl}/budgets/${uid}.json`).subscribe({
+      next: (data) => {
+        const list: Budget[] = this.toArray<Budget>(data);
+        this.budgetsSubject.next(list);
+      },
+      error: (err) => console.error('Error loading budgets:', err)
+    });
+  }
 
-      console.log("1. New Expense Added. Category:", newTx.category, "Type:", newTx.type);
+  loadGoals() {
+    const uid = this.getUid();
+    if (!uid) return;
 
-      // 2. Find the matching budget using the saved reference
-      if (newTx.type === 'expense' && newTx.category) {
-        const snapshot = await budgetsRef.ref
-          .where('uid', '==', this.userId)
-          .where('category', '==', newTx.category)
-          .get();
+    this.http.get<any>(`${this.dbUrl}/goals/${uid}.json`).subscribe({
+      next: (data) => {
+        const list: Goal[] = this.toArray<Goal>(data);
+        this.goalsSubject.next(list);
+      },
+      error: (err) => console.error('Error loading goals:', err)
+    });
+  }
 
-        console.log("2. Did we find a matching budget?", !snapshot.empty);
+  // ─── TRANSACTIONS ───────────────────────────────────────────
 
-        // If we found a budget with that category, update it!
-        if (!snapshot.empty) {
-          const budgetDoc = snapshot.docs[0];
-          const data: any = budgetDoc.data();
-          
-          const currentSpent = Number(data.spent) || 0;
-          const amountToAdd = Number(newTx.amount);
-          const newTotal = currentSpent + amountToAdd;
+  addTransaction(transaction: Transaction) {
+    const uid = this.getUid();
+    const newTx = { ...transaction, uid };
 
-          console.log(`3. Updating budget! Old Spent: ${currentSpent} + New Expense: ${amountToAdd} = ${newTotal}`);
-          
-          await budgetDoc.ref.update({ spent: newTotal });
-        } else if (newTx.category !== 'Savings') {
-          // Only warn if the missing budget ISN'T "Savings"
-          console.warn("WARNING: Could not find a budget with the exact name:", newTx.category);
+    console.log('STEP 1: Sending POST', newTx);
+
+    this.http.post<any>(`${this.dbUrl}/transactions/${uid}.json`, newTx).subscribe({
+      next: (res) => {
+        console.log('STEP 2: POST succeeded, res =', res);
+        
+        const current = this.transactionsSubject.getValue();
+        console.log('STEP 3: current transactions count =', current.length);
+        
+        const withId = { ...newTx, id: res.name };
+        const newList = [withId, ...current];
+        
+        console.log('STEP 4: pushing new list with count =', newList.length);
+        this.transactionsSubject.next(newList);
+        console.log('STEP 5: subject.next() called');
+
+        if (newTx.type === 'expense' && newTx.category) {
+          this.updateBudgetSpent(newTx.category, Number(newTx.amount));
         }
-      }
-
-      return result;
+      },
+      error: (err) => console.error('Error adding transaction:', err)
     });
   }
 
-  async deleteTransaction(id: string) {
-    // 4. We wrap the Delete call in the safe context!
-    return runInInjectionContext(this.injector, () => {
-      return this.firestore.collection('transactions').doc(id).delete();
+  updateTransaction(id: string, newData: Partial<Transaction>) {
+    const uid = this.getUid();
+
+    this.http.put<any>(`${this.dbUrl}/transactions/${uid}/${id}.json`, newData).subscribe({
+      next: () => {
+        // Update in memory immediately
+        const current = this.transactionsSubject.getValue();
+        this.transactionsSubject.next(
+          current.map(t => t.id === id ? { ...t, ...newData } : t)
+        );
+        this.recalculateAllBudgets();
+      },
+      error: (err) => console.error('Error updating transaction:', err)
     });
   }
 
+  deleteTransaction(id: string) {
+    const uid = this.getUid();
 
-  async updateTransaction(id: string, transaction: Partial<Transaction>) {
-    // Wrap the Update call in the safe context!
-    return runInInjectionContext(this.injector, () => {
-      return this.firestore.collection('transactions').doc(id).update(transaction);
+    const tx = this.transactionsSubject.getValue().find(t => t.id === id);
+
+    this.http.delete<any>(`${this.dbUrl}/transactions/${uid}/${id}.json`).subscribe({
+      next: () => {
+        // Remove from memory immediately
+        const current = this.transactionsSubject.getValue();
+        this.transactionsSubject.next(current.filter(t => t.id !== id));
+
+        if (tx && tx.type === 'expense' && tx.category) {
+          this.updateBudgetSpent(tx.category, -Number(tx.amount));
+        }
+      },
+      error: (err) => console.error('Error deleting transaction:', err)
     });
   }
 
+  // ─── BUDGETS ────────────────────────────────────────────────
 
-  async addBudget(budget: Budget) {
-  if (!this.userId) throw new Error('User not logged in');
-  const newBudget = { ...budget, uid: this.userId, spent: 0 }; // Default spent to 0
-  return runInInjectionContext(this.injector, () => {
-    return this.firestore.collection('budgets').add(newBudget);
-  });
-}
+  addBudget(budget: Budget) {
+    const uid = this.getUid();
+    const newBudget = { ...budget, uid, spent: 0 };
 
-async updateBudget(id: string, budget: Partial<Budget>) {
-  return runInInjectionContext(this.injector, () => {
-    return this.firestore.collection('budgets').doc(id).update(budget);
-  });
-}
+    this.http.post<any>(`${this.dbUrl}/budgets/${uid}.json`, newBudget).subscribe({
+      next: () => this.loadBudgets(),
+      error: (err) => console.error('Error adding budget:', err)
+    });
+  }
 
-async deleteBudget(id: string) {
-  return runInInjectionContext(this.injector, () => {
-    return this.firestore.collection('budgets').doc(id).delete();
-  });
-}
+  updateBudget(id: string, data: Partial<Budget>) {
+    const uid = this.getUid();
 
+    this.http.patch<any>(`${this.dbUrl}/budgets/${uid}/${id}.json`, data).subscribe({
+      next: () => this.loadBudgets(),
+      error: (err) => console.error('Error updating budget:', err)
+    });
+  }
 
+  deleteBudget(id: string) {
+    const uid = this.getUid();
 
-async addGoal(goal: Goal) {
-     if (!this.userId) throw new Error('User not logged in');
-     const newGoal = { ...goal, uid: this.userId, currentAmount: 0 }; 
-     return runInInjectionContext(this.injector, () => {
-       return this.firestore.collection('goals').add(newGoal);
-     });
-   }
+    this.http.delete<any>(`${this.dbUrl}/budgets/${uid}/${id}.json`).subscribe({
+      next: () => this.loadBudgets(),
+      error: (err) => console.error('Error deleting budget:', err)
+    });
+  }
 
-   async updateGoal(id: string, currentAmount: number) {
-     return runInInjectionContext(this.injector, () => {
-       return this.firestore.collection('goals').doc(id).update({ currentAmount });
-     });
-   }
+  // Update a budget's spent amount by a delta (+amount or -amount)
+  private updateBudgetSpent(category: string, delta: number) {
+    const budgets = this.budgetsSubject.getValue();
+    const budget = budgets.find(b => b.category === category);
+    if (!budget || !budget.id) return;
 
-   async deleteGoal(id: string) {
-     return runInInjectionContext(this.injector, () => {
-       return this.firestore.collection('goals').doc(id).delete();
-     });
-   }
+    const newSpent = Math.max(0, (Number(budget.spent) || 0) + delta);
+    this.updateBudget(budget.id, { spent: newSpent });
+  }
 
+  // Recalculate all budgets from scratch based on current transactions
+  recalculateAllBudgets() {
+    const transactions = this.transactionsSubject.getValue();
+    const budgets = this.budgetsSubject.getValue();
 
+    budgets.forEach(budget => {
+      if (!budget.id) return;
+      const totalSpent = transactions
+        .filter(t => t.type === 'expense' && t.category === budget.category)
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+      this.updateBudget(budget.id, { spent: totalSpent });
+    });
+  }
 
+  // ─── GOALS ──────────────────────────────────────────────────
+
+  addGoal(goal: Goal) {
+    const uid = this.getUid();
+    const newGoal = { ...goal, uid, currentAmount: 0 };
+
+    this.http.post<any>(`${this.dbUrl}/goals/${uid}.json`, newGoal).subscribe({
+      next: () => this.loadGoals(),
+      error: (err) => console.error('Error adding goal:', err)
+    });
+  }
+
+  updateGoal(id: string, currentAmount: number) {
+    const uid = this.getUid();
+
+    this.http.patch<any>(`${this.dbUrl}/goals/${uid}/${id}.json`, { currentAmount }).subscribe({
+      next: () => this.loadGoals(),
+      error: (err) => console.error('Error updating goal:', err)
+    });
+  }
+
+  deleteGoal(id: string) {
+    const uid = this.getUid();
+
+    this.http.delete<any>(`${this.dbUrl}/goals/${uid}/${id}.json`).subscribe({
+      next: () => this.loadGoals(),
+      error: (err) => console.error('Error deleting goal:', err)
+    });
+  }
 }

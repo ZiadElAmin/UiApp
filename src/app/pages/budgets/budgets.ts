@@ -14,35 +14,30 @@ export class Budgets implements OnInit {
   budgetForm: FormGroup;
   budgets$: Observable<Budget[]>;
 
-  constructor(
-    private fb: FormBuilder,
-    private financeService: FinanceService
-  ) {
+  constructor(private fb: FormBuilder, private financeService: FinanceService) {
     this.budgetForm = this.fb.group({
       category: ['', Validators.required],
       limit: [null, [Validators.required, Validators.min(1)]]
     });
-    
-    // Connect to our database observable
     this.budgets$ = this.financeService.budgets$;
   }
 
   ngOnInit() {}
 
-  async onSubmit() {
+  onSubmit() {
     if (this.budgetForm.invalid) return;
-
-    try {
-      await this.financeService.addBudget(this.budgetForm.value);
-      this.budgetForm.reset();
-    } catch (error) {
-      console.error("Error saving budget", error);
-    }
+    this.financeService.addBudget(this.budgetForm.value);
+    this.budgetForm.reset();
   }
 
   deleteBudget(id: string) {
-    if(confirm('Are you sure you want to delete this budget?')) {
+    if (confirm('Are you sure you want to delete this budget?')) {
       this.financeService.deleteBudget(id);
     }
+  }
+
+  // trackBy for *ngFor — Lab 4
+  trackById(index: number, item: Budget): string {
+    return item.id || index.toString();
   }
 }

@@ -10,14 +10,10 @@ import { AuthService } from '../../services/auth';
 })
 export class Login implements OnInit {
   authForm: FormGroup;
-  isLoginMode = true; // Toggle between Login and Register
+  isLoginMode = true;
   errorMessage: string | null = null;
 
-  constructor(
-    private fb: FormBuilder, // Helper to build forms
-    private authService: AuthService
-  ) {
-    // Initialize form with strict validation[cite: 1, 5]
+  constructor(private fb: FormBuilder, private authService: AuthService) {
     this.authForm = this.fb.group({
       email: ['', [Validators.required, Validators.email]],
       password: ['', [Validators.required, Validators.minLength(6)]]
@@ -31,20 +27,21 @@ export class Login implements OnInit {
     this.errorMessage = null;
   }
 
-  async onSubmit() {
+  onSubmit() {
     if (this.authForm.invalid) return;
 
     const { email, password } = this.authForm.value;
     this.errorMessage = null;
 
-    try {
-      if (this.isLoginMode) {
-        await this.authService.login(email, password);
-      } else {
-        await this.authService.register(email, password);
-      }
-    } catch (err: any) {
-      this.errorMessage = err.message;
+    if (this.isLoginMode) {
+      // Use .subscribe() as taught in labs
+      this.authService.login(email, password).subscribe({
+        error: (err) => {
+          this.errorMessage = err?.error?.error?.message || 'Login failed. Please try again.';
+        }
+      });
+    } else {
+      this.authService.register(email, password);
     }
   }
 }

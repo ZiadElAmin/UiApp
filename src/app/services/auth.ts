@@ -1,51 +1,78 @@
 import { Injectable } from '@angular/core';
-import { AngularFireAuth } from '@angular/fire/compat/auth';
+import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { Router } from '@angular/router';
 import { UserProfile } from '../models/finance.model';
+import { environment } from '../../environments/environment';
 
 @Injectable({
-  providedIn: 'root' // Centralized Dependency Injection[cite: 1, 3]
+  providedIn: 'root'
 })
 export class AuthService {
-  // BehaviorSubject holds the current user state and notifies subscribers when it changes[cite: 3]
+
+  private apiKey = environment.firebase.apiKey;
+  private signInUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${this.apiKey}`;
+  private signUpUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${this.apiKey}`;
+
+  // BehaviorSubject holds the current user — lab taught pattern
   private userSubject = new BehaviorSubject<UserProfile | null>(null);
   user$: Observable<UserProfile | null> = this.userSubject.asObservable();
 
-  constructor(private afAuth: AngularFireAuth, private router: Router) {
-    // Listen to Firebase auth state changes automatically
-    this.afAuth.authState.subscribe(user => {
-      if (user) {
-        this.userSubject.next({ uid: user.uid, email: user.email || '' });
-      } else {
-        this.userSubject.next(null);
+  constructor(private http: HttpClient, private router: Router) {
+    // Restore user from localStorage on app load
+    const savedUser = localStorage.getItem('currentUser');
+    if (savedUser) {
+      this.userSubject.next(JSON.parse(savedUser));
+    }
+  }
+
+  // Register a new user using Firebase Auth REST API
+  register(email: string, password: string) {
+    const body = { email, password, returnSecureToken: true };
+    this.http.post<any>(this.signUpUrl, body).subscribe({
+      next: (res) => {
+        const user: UserProfile = { uid: res.localId, email: res.email, token: res.idToken };
+        this.userSubject.next(user);
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        this.router.navigate(['/dashboard']);
+      },
+      error: (err) => {
+        console.error('Register error:', err);
+        throw err;
       }
     });
   }
 
-  // Register a new user
-  async register(email: string, password: string) {
-    try {
-      await this.afAuth.createUserWithEmailAndPassword(email, password);
-      this.router.navigate(['/dashboard']);
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  // Login an existing user
-  async login(email: string, password: string) {
-    try {
-      await this.afAuth.signInWithEmailAndPassword(email, password);
-      this.router.navigate(['/dashboard']);
-    } catch (error) {
-      throw error;
-    }
+  // Login using Firebase Auth REST API
+  login(email: string, password: string): Observable<any> {
+    const body = { email, password, returnSecureToken: true };
+    const obs = this.http.post<any>(this.signInUrl, body);
+    obs.subscribe({
+      next: (res) => {
+        const user: UserProfile = { uid: res.localId, email: res.email, token: res.idToken };
+        this.userSubject.next(user);
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        this.router.navigate(['/dashboard']);
+      },
+      error: (err) => console.error('Login error:', err)
+    });
+    return obs;
   }
 
   // Logout
-  async logout() {
-    await this.afAuth.signOut();
+  logout() {
+    this.userSubject.next(null);
+    localStorage.removeItem('currentUser');
     this.router.navigate(['/login']);
+  }
+
+  // Get the current user's token for authenticated requests
+  getToken(): string | null {
+    return this.userSubject.value?.token || null;
+  }
+
+  // Get the current user's uid
+  getUid(): string | null {
+    return this.userSubject.value?.uid || null;
   }
 }
